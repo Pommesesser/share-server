@@ -12,30 +12,41 @@ pub struct File {
 
 #[derive(Debug)]
 pub enum StoreFileError {
-    FileCreate,
-    FileWrite,
+    Filesystem,
     Database
 }
 
 pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError> {
     let id = Uuid::now_v7().to_string();
 
-    let file_path = PathBuf::from(APP_DATA_DIR)
+    let temp_file_path = PathBuf::from(APP_DATA_DIR)
+        .join("files")
+        .join(format!("tmp-{}", id));
+
+    fs::write(&temp_file_path, &file.data)
+        .map_err(|_| {
+            // I'm not checking because I don't care if temporary files pile up lol
+            let _ = fs::remove_file(&temp_file_path);
+            StoreFileError::Filesystem
+        })?;
+
+    let final_file_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
         .join(&id);
 
-    let mut fs_file = fs::File::create(&file_path)
-        .map_err(|_| StoreFileError::FileCreate)?;
+    fs::rename(&temp_file_path, &final_file_path)
+        .map_err(|_| {
+            // I'm not checking because I don't care if temporary files pile up lol
+            let _ = fs::remove_file(&temp_file_path);
+            StoreFileError::Filesystem
+        })?;
 
-    if fs_file.write_all(&file.data).is_err() {
-        let _ = fs::remove_file(file_path);
-        return Err(StoreFileError::FileWrite)
-    }
-
-    if database::insert_file(db, &id, &file.name).is_err() {
-        let _ = fs::remove_file(file_path);
-        return Err(StoreFileError::Database)
-    }
+    database::insert_file(db, &id, &file.name)
+        .map_err(|_| {
+            // BAD
+            let _ = fs::remove_file(&final_file_path);
+            StoreFileError::Database
+        })?;
 
     Ok(id)
 }
