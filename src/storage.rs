@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use rusqlite::Connection;
 use uuid::Uuid;
-use crate::APP_DATA_DIR;
+use crate::{database, APP_DATA_DIR};
 
 pub struct File {
     pub name: String,
@@ -34,10 +34,7 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
         return Err(StoreFileError::FileWrite)
     }
 
-    if db.execute(
-        "INSERT INTO files (id, name) VALUES (?1, ?2)",
-        (&id, &file.name),
-    ).is_err() {
+    if database::insert_row(db, &id, &file.name).is_err() {
         let _ = fs::remove_file(file_path);
         return Err(StoreFileError::Database)
     }
@@ -45,11 +42,13 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
     Ok(id)
 }
 
+#[derive(Debug)]
 pub enum GetFileError {
     FileNotFound,
     FileRead,
     Database
 }
+
 pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
     let file_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
@@ -59,11 +58,7 @@ pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
         return Err(GetFileError::FileNotFound);
     }
 
-    let name = match db.query_row(
-        "SELECT name FROM files WHERE id = ?1",
-        [id],
-        |row| row.get::<_, String>(0),
-    ) {
+    let name = match database::query_name(db, &id) {
         Ok(name) => name,
         Err(_) => return Err(GetFileError::Database),
     };

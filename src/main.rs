@@ -1,4 +1,5 @@
 mod storage;
+mod database;
 
 use std::fs;
 use std::path::PathBuf;
@@ -9,15 +10,14 @@ const APP_DATA_DIR: &str = "./data";
 
 fn main() {
     initialize_app_data_dir();
-    let db = initialize_index();
+    let db = initialize_database();
 
     let file = File {
         name: "duplicate".to_string(),
         data: b"hello dis is a duplicate".to_vec()
     };
 
-    storage::store_file(&db, &file).expect("Storage failed lul");
-    storage::store_file(&db, &file).expect("Storage failed lul");
+    println!("{:?}", String::from_utf8(storage::get_file(&db, "019ff1dd-cee2-79f0-b85d-2f3fd6a20270").unwrap().data).unwrap())
 }
 
 fn initialize_app_data_dir() {
@@ -26,19 +26,13 @@ fn initialize_app_data_dir() {
         .expect("Unable to initialize app data directory");
 }
 
-fn initialize_index() -> Connection {
-    let index_path = PathBuf::from(APP_DATA_DIR).join("index.db");
+fn initialize_database() -> Connection {
+    let db_path = PathBuf::from(APP_DATA_DIR).join("index.db");
 
-    let db = Connection::open(index_path)
-        .expect("Unable to initialize index");
+    let db = database::connect(&db_path)
+        .expect("Unable to initialize database connection");
 
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS files (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL
-        )",
-        [],
-    )
+    database::initialize_files_table(&db)
         .expect("Unable to initialize files table");
 
     db
