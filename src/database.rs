@@ -39,3 +39,18 @@ pub fn query_all_names(db: &Connection) -> rusqlite::Result<Vec<String>> {
 
     names
 }
+
+pub fn file_exists(db: &Connection, id: &str) -> rusqlite::Result<bool> {
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM files WHERE id = ?1)",
+        [id],
+        |row| row.get(0),
+    )
+}
+
+pub fn delete_file(db: &Connection, id: &str) -> rusqlite::Result<usize> {
+    db.execute(
+        "DELETE FROM files WHERE id = ?1",
+        [id],
+    )
+}
