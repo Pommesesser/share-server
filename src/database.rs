@@ -29,3 +29,13 @@ pub fn query_name(db: &Connection, id: &str) -> rusqlite::Result<String> {
         |row| row.get::<_, String>(0),
     )
 }
+
+pub fn query_all_names(db: &Connection) -> rusqlite::Result<Vec<String>> {
+    let mut statement = db.prepare("SELECT name FROM files")?;
+
+    let names = statement
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect();
+
+    names
+}

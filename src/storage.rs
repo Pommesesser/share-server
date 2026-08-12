@@ -24,10 +24,8 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
         .join("files")
         .join(&id);
 
-    let mut fs_file = match fs::File::create(&file_path) {
-        Ok(fs_file) => fs_file,
-        Err(_) => return Err(StoreFileError::FileCreate)
-    };
+    let mut fs_file = fs::File::create(&file_path)
+        .map_err(|_| StoreFileError::FileCreate)?;
 
     if fs_file.write_all(&file.data).is_err() {
         let _ = fs::remove_file(file_path);
@@ -58,15 +56,21 @@ pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
         return Err(GetFileError::FileNotFound);
     }
 
-    let name = match database::query_name(db, &id) {
-        Ok(name) => name,
-        Err(_) => return Err(GetFileError::Database),
-    };
+    let name = database::query_name(db, id)
+        .map_err(|_| GetFileError::Database)?;
 
-    let data = match fs::read(&file_path) {
-        Ok(data) => data,
-        Err(_) => return Err(GetFileError::FileRead),
-    };
+    let data = fs::read(&file_path)
+        .map_err(|_| GetFileError::FileRead)?;
 
     Ok(File { name, data })
+}
+
+#[derive(Debug)]
+pub enum GetAllFileNamesError {
+    Database
+}
+
+pub fn get_all_file_names(db: &Connection) -> Result<Vec<String>, GetAllFileNamesError> {
+    database::query_all_names(db)
+        .map_err(|_| GetAllFileNamesError::Database)
 }
