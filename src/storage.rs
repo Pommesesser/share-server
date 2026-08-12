@@ -74,6 +74,15 @@ pub fn get_file_data(db: &Connection, id: &str) -> Result<Vec<u8>, GetFileError>
     Ok(data)
 }
 
+pub enum GetFileNameError {
+    Database
+}
+
+pub fn get_file_name(db: &Connection, id: &str) -> Result<String, GetFileNameError> {
+    database::query_name(db, id)
+        .map_err(|_| GetFileNameError::Database)
+}
+
 #[derive(Debug)]
 pub enum GetAllFileNamesError {
     Database

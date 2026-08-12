@@ -4,16 +4,12 @@ mod database;
 use std::fs;
 use std::path::PathBuf;
 use rusqlite::Connection;
-use crate::storage::File;
 
 const APP_DATA_DIR: &str = "./data";
 
 fn main() {
     initialize_app_data_dir();
     let db = initialize_database();
-
-    let _ = storage::remove_file(&db, "019ff1dd-cee2-79f0-b85d-2f3fd6a20270");
-    println!("{:?}", storage::get_all_file_names(&db))
 }
 
 fn initialize_app_data_dir() {
