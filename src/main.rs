@@ -3,22 +3,31 @@ mod storage;
 use std::fs;
 use std::path::PathBuf;
 use rusqlite::Connection;
+use crate::storage::File;
 
-const DATA_DIR_STR: &str = "./data";
+const APP_DATA_DIR: &str = "./data";
 
 fn main() {
     initialize_app_data_dir();
-    initialize_index();
+    let db = initialize_index();
+
+    let file = File {
+        name: "duplicate".to_string(),
+        data: b"hello dis is a duplicate".to_vec()
+    };
+
+    storage::store_file(&db, &file).expect("Storage failed lul");
+    storage::store_file(&db, &file).expect("Storage failed lul");
 }
 
 fn initialize_app_data_dir() {
-    let app_data_dir = PathBuf::from(DATA_DIR_STR);
+    let app_data_dir = PathBuf::from(APP_DATA_DIR);
     fs::create_dir_all(app_data_dir.join("files"))
         .expect("Unable to initialize app data directory");
 }
 
-fn initialize_index() {
-    let index_path = PathBuf::from(DATA_DIR_STR).join("index.db");
+fn initialize_index() -> Connection {
+    let index_path = PathBuf::from(APP_DATA_DIR).join("index.db");
 
     let db = Connection::open(index_path)
         .expect("Unable to initialize index");
@@ -31,4 +40,6 @@ fn initialize_index() {
         [],
     )
         .expect("Unable to initialize files table");
+
+    db
 }
