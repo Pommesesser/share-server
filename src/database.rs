@@ -15,7 +15,7 @@ pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<usize> {
     )
 }
 
-pub fn insert_row(db: &Connection, id: &str, name: &str) -> rusqlite::Result<usize> {
+pub fn insert_file(db: &Connection, id: &str, name: &str) -> rusqlite::Result<usize> {
     db.execute(
         "INSERT INTO files (id, name) VALUES (?1, ?2)",
         (id, name),

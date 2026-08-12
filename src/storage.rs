@@ -32,7 +32,7 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
         return Err(StoreFileError::FileWrite)
     }
 
-    if database::insert_row(db, &id, &file.name).is_err() {
+    if database::insert_file(db, &id, &file.name).is_err() {
         let _ = fs::remove_file(file_path);
         return Err(StoreFileError::Database)
     }
@@ -51,7 +51,6 @@ pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
     let file_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
         .join(id);
-
     if !file_path.exists() {
         return Err(GetFileError::FileNotFound);
     }
@@ -73,4 +72,19 @@ pub enum GetAllFileNamesError {
 pub fn get_all_file_names(db: &Connection) -> Result<Vec<String>, GetAllFileNamesError> {
     database::query_all_names(db)
         .map_err(|_| GetAllFileNamesError::Database)
+}
+
+pub enum RemoveFileError {
+    FileNotFound
+}
+
+pub fn remove_file(db: &Connection, id: &str) -> Result<(), RemoveFileError> {
+    let file_path = PathBuf::from(APP_DATA_DIR)
+        .join("files")
+        .join(id);
+    if !file_path.exists() {
+        return Err(RemoveFileError::FileNotFound);
+    }
+
+    todo!()
 }

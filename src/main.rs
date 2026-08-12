@@ -12,12 +12,7 @@ fn main() {
     initialize_app_data_dir();
     let db = initialize_database();
 
-    let file = File {
-        name: "duplicate".to_string(),
-        data: b"hello dis is a duplicate".to_vec()
-    };
-
-    println!("{:?}", String::from_utf8(storage::get_file(&db, "019ff1dd-cee2-79f0-b85d-2f3fd6a20270").unwrap().data).unwrap())
+    println!("{:?}", storage::get_all_file_names(&db))
 }
 
 fn initialize_app_data_dir() {
