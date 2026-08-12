@@ -1,14 +1,8 @@
 use std::fs;
-use std::io::Write;
 use std::path::PathBuf;
 use rusqlite::Connection;
 use uuid::Uuid;
 use crate::{database, APP_DATA_DIR};
-
-pub struct File {
-    pub name: String,
-    pub data: Vec<u8>
-}
 
 #[derive(Debug)]
 pub enum StoreFileError {
@@ -16,14 +10,14 @@ pub enum StoreFileError {
     Database
 }
 
-pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError> {
+pub fn store_file(db: &Connection, name: &str, data: &[u8]) -> Result<String, StoreFileError> {
     let id = Uuid::now_v7().to_string();
 
     let temp_file_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
         .join(format!("tmp-{}", id));
 
-    fs::write(&temp_file_path, &file.data)
+    fs::write(&temp_file_path, data)
         .map_err(|_| {
             // I'm not checking because I don't care if temporary files pile up lol
             let _ = fs::remove_file(&temp_file_path);
@@ -42,7 +36,7 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
         })?;
 
     // Crashing before insertion completes produces orphaned file
-    database::insert_file(db, &id, &file.name)
+    database::insert_file(db, &id, name)
         .map_err(|_| {
             // Produces orphaned files if this fails
             let _ = fs::remove_file(&final_file_path);
@@ -55,11 +49,12 @@ pub fn store_file(db: &Connection, file: &File) -> Result<String, StoreFileError
 #[derive(Debug)]
 pub enum GetFileError {
     FileNotFound,
+    EntryNotFound,
     FileRead,
     Database
 }
 
-pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
+pub fn get_file_data(db: &Connection, id: &str) -> Result<Vec<u8>, GetFileError> {
     let file_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
         .join(id);
@@ -67,13 +62,16 @@ pub fn get_file(db: &Connection, id: &str) -> Result<File, GetFileError> {
         return Err(GetFileError::FileNotFound);
     }
 
-    let name = database::query_name(db, id)
+    let entry_exists = database::file_exists(db, id)
         .map_err(|_| GetFileError::Database)?;
+    if !entry_exists {
+        return Err(GetFileError::EntryNotFound);
+    }
 
     let data = fs::read(&file_path)
         .map_err(|_| GetFileError::FileRead)?;
 
-    Ok(File { name, data })
+    Ok(data)
 }
 
 #[derive(Debug)]
@@ -104,7 +102,6 @@ pub fn remove_file(db: &Connection, id: &str) -> Result<(), RemoveFileError> {
 
     let entry_exists = database::file_exists(db, id)
         .map_err(|_| RemoveFileError::Database)?;
-
     if !entry_exists {
         return Err(RemoveFileError::EntryNotFound);
     }
