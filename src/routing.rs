@@ -67,6 +67,15 @@ async fn get_file(
 
     let mut response = Response::new(data.into());
 
+    // This shit is maybe just straight up tech debt
+    // I am passing the filename in two ways
+    // As a header for easy parsing in the cli client
+    // And in the content disposition for downloading in the browser
+    response.headers_mut().insert(
+        "x-file-name",
+        HeaderValue::from_str(&name).expect("invalid filename"),
+    );
+
     response.headers_mut().insert(
         CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),

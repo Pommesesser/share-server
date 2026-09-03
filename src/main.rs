@@ -12,15 +12,11 @@ async fn main() {
     initialize_app_data_dir();
     let db = initialize_database();
 
-    let _ = database::insert_file(&db, "120", "name", b"dis is some data");
-
-    let app = routing::router(db);
-
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
         .expect("Unable to bind server");
 
-    axum::serve(listener, app)
+    axum::serve(listener, routing::router(db))
         .await
         .expect("Server failed");
 }
