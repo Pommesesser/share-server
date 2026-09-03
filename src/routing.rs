@@ -1,6 +1,5 @@
 use crate::database::FileInfo;
 use axum::{
-    body::Bytes,
     extract::{Path, State},
     http::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
@@ -12,7 +11,9 @@ use axum::{
 };
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
+use axum::body::Body;
 use uuid::Uuid;
+use futures_util::StreamExt;
 use crate::database;
 
 pub fn router(db: Connection) -> Router {
@@ -37,19 +38,26 @@ async fn get_all_file_info(
 async fn store_file(
     State(db): State<Arc<Mutex<Connection>>>,
     headers: HeaderMap,
-    body: Bytes,
+    body: Body,
 ) -> Result<String, StatusCode> {
     let name = headers
         .get("x-file-name")
         .and_then(|value| value.to_str().ok())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    let id = Uuid::now_v7().to_string();
+    let mut bytes: Vec<u8> = vec![];
+    let mut stream = body.into_data_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|_| StatusCode::BAD_REQUEST)?;
+        bytes.extend_from_slice(&chunk);
+    }
 
     let db = db.lock()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    database::insert_file(&db, &id, name, &body)
+    let id = Uuid::now_v7().to_string();
+
+    database::insert_file(&db, &id, name, &bytes)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(id)
