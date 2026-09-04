@@ -16,10 +16,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use crate::{database, id, APP_DATA_DIR};
 
-// i64 is used for compatibility with rusqlite
-const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
-
-// TODO consistency update
+// TODO consistency
 // TODO better error codes
 
 pub fn router(db_path: PathBuf) -> Router {
@@ -34,16 +31,6 @@ async fn store_file(
     headers: HeaderMap,
     body: Body,
 ) -> Result<String, StatusCode> {
-    let content_length = headers
-        .get("content-length")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<i64>().ok())
-        .ok_or(StatusCode::LENGTH_REQUIRED)?;
-
-    if content_length > MAX_FILE_SIZE {
-        return Err(StatusCode::PAYLOAD_TOO_LARGE);
-    }
-
     let name = headers
         .get("x-file-name")
         .and_then(|value| value.to_str().ok())
@@ -73,11 +60,6 @@ async fn store_file(
         received += chunk.len() as i64;
     }
 
-    if received != content_length {
-        let _ = tokio::fs::remove_file(&tmp_path).await;
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
     // rename before database insertion
     let final_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
@@ -89,7 +71,7 @@ async fn store_file(
     // index decides what exists so it comes last
     let db = database::connect(&db_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    database::insert_file_entry(&db, &id, name, content_length)
+    database::insert_file_entry(&db, &id, name, received)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(id)
@@ -126,6 +108,7 @@ async fn get_file(
         HeaderValue::from_static("application/octet-stream"),
     );
 
+    // TODO properly encode Content-Disposition filename
     let disposition = format!("attachment; filename=\"{}\"", name);
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
