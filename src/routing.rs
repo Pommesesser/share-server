@@ -19,6 +19,9 @@ use crate::{database, id, APP_DATA_DIR};
 // i64 is used for compatibility with rusqlite
 const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
 
+// TODO consistency update
+// TODO better error codes
+
 pub fn router(db_path: PathBuf) -> Router {
     Router::new()
         .route("/files", get(get_all_file_info).post(store_file))
