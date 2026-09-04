@@ -12,9 +12,8 @@ use axum::{
 use rusqlite::Connection;
 use std::sync::{Arc, Mutex};
 use axum::body::Body;
-use uuid::Uuid;
 use futures_util::StreamExt;
-use crate::database;
+use crate::{database, id};
 
 pub fn router(db: Connection) -> Router {
     let db = Arc::new(Mutex::new(db));
@@ -23,16 +22,6 @@ pub fn router(db: Connection) -> Router {
         .route("/files", get(get_all_file_info).post(store_file))
         .route("/files/{id}", get(get_file).delete(remove_file))
         .with_state(db)
-}
-
-async fn get_all_file_info(
-    State(db): State<Arc<Mutex<Connection>>>,
-) -> Result<Json<Vec<FileInfo>>, StatusCode> {
-    let db = db.lock()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let files = database::query_all_file_info(&db)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(files))
 }
 
 async fn store_file(
@@ -55,7 +44,7 @@ async fn store_file(
     let db = db.lock()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let id = Uuid::now_v7().to_string();
+    let id = id::gen_rand_id();
 
     database::insert_file(&db, &id, name, &bytes)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -98,6 +87,16 @@ async fn get_file(
     );
 
     Ok(response)
+}
+
+async fn get_all_file_info(
+    State(db): State<Arc<Mutex<Connection>>>,
+) -> Result<Json<Vec<FileInfo>>, StatusCode> {
+    let db = db.lock()
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let files = database::query_all_file_info(&db)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(files))
 }
 
 async fn remove_file(
