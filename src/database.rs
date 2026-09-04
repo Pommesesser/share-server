@@ -2,9 +2,10 @@ use std::path::Path;
 use rusqlite::Connection;
 
 #[derive(serde::Serialize)]
-pub struct FileInfo {
+pub struct FileEntry {
     pub id: String,
     pub name: String,
+    pub size: i64
 }
 
 pub fn connect(db_path: &Path) -> Result<Connection, rusqlite::Error> {
@@ -16,50 +17,68 @@ pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<usize> {
         "CREATE TABLE IF NOT EXISTS files (
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
-            data BLOB NOT NULL
+            size INTEGER NOT NULL
         )",
         [],
     )
 }
 
-pub fn insert_file(db: &Connection, id: &str, name: &str, data: &[u8]) -> rusqlite::Result<usize> {
+pub fn insert_file_entry(
+    db: &Connection,
+    id: &str,
+    name: &str,
+    size: i64,
+) -> rusqlite::Result<()> {
     db.execute(
-        "INSERT INTO files (id, name, data) VALUES (?1, ?2, ?3)",
-        (id, name, data),
+        "INSERT INTO files (id, name, size)
+         VALUES (?1, ?2, ?3)",
+        (id, name, size),
+    )?;
+
+    Ok(())
+}
+
+pub fn query_file_name(
+    db: &Connection,
+    id: &str,
+) -> rusqlite::Result<String> {
+    db.query_row(
+        "SELECT name FROM files WHERE id = ?1",
+        [id],
+        |row| row.get(0),
     )
 }
 
-pub fn query_all_file_info(db: &Connection)-> rusqlite::Result<Vec<FileInfo>> {
+pub fn query_all_file_entries(db: &Connection)-> rusqlite::Result<Vec<FileEntry>> {
     let mut statement = db.prepare(
-        "SELECT id, name FROM files"
+        "SELECT id, name, size FROM files"
     )?;
 
     let rows = statement.query_map([], |row| {
-        Ok(FileInfo {
+        Ok(FileEntry {
             id: row.get(0)?,
             name: row.get(1)?,
+            size: row.get(2)?
         })
     })?;
 
     rows.collect()
 }
 
-pub fn delete_file(db: &Connection, id: &str) -> rusqlite::Result<usize> {
+pub fn delete_file_entry(
+    db: &Connection,
+    id: &str,
+) -> rusqlite::Result<String> {
+    let name = db.query_row(
+        "SELECT name FROM files WHERE id = ?1",
+        [id],
+        |row| row.get::<_, String>(0),
+    )?;
+
     db.execute(
         "DELETE FROM files WHERE id = ?1",
         [id],
-    )
-}
+    )?;
 
-pub fn query_file(db: &Connection, id: &str) -> rusqlite::Result<(String, Vec<u8>)> {
-    db.query_row(
-        "SELECT name, data FROM files WHERE id = ?1",
-        [id],
-        |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Vec<u8>>(1)?,
-            ))
-        },
-    )
+    Ok(name)
 }

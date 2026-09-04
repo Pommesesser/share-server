@@ -1,4 +1,4 @@
-use crate::database::FileInfo;
+use crate::database::FileEntry;
 use axum::{
     extract::{Path, State},
     http::{
@@ -9,68 +9,113 @@ use axum::{
     routing::get,
     Json, Router,
 };
-use rusqlite::Connection;
-use std::sync::{Arc, Mutex};
 use axum::body::Body;
 use futures_util::StreamExt;
-use crate::{database, id};
+use std::path::PathBuf;
+use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
+use crate::{database, id, APP_DATA_DIR};
 
-pub fn router(db: Connection) -> Router {
-    let db = Arc::new(Mutex::new(db));
+// i64 is used for compatibility with rusqlite
+const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024; // 10 GiB
 
+pub fn router(db_path: PathBuf) -> Router {
     Router::new()
         .route("/files", get(get_all_file_info).post(store_file))
         .route("/files/{id}", get(get_file).delete(remove_file))
-        .with_state(db)
+        .with_state(db_path)
 }
 
 async fn store_file(
-    State(db): State<Arc<Mutex<Connection>>>,
+    State(db_path): State<PathBuf>,
     headers: HeaderMap,
     body: Body,
 ) -> Result<String, StatusCode> {
+    let content_length = headers
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<i64>().ok())
+        .ok_or(StatusCode::LENGTH_REQUIRED)?;
+
+    if content_length > MAX_FILE_SIZE {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
     let name = headers
         .get("x-file-name")
         .and_then(|value| value.to_str().ok())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
-    let mut bytes: Vec<u8> = vec![];
     let mut stream = body.into_data_stream();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|_| StatusCode::BAD_REQUEST)?;
-        bytes.extend_from_slice(&chunk);
-    }
-
-    let db = db.lock()
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let id = id::gen_rand_id();
+    let tmp_path = PathBuf::from(APP_DATA_DIR)
+        .join("files")
+        .join(format!("tmp-{id}"));
 
-    database::insert_file(&db, &id, name, &bytes)
+    let mut file = tokio::fs::File::create(&tmp_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let mut received = 0i64;
+
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+        file.write_all(&chunk)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+        received += chunk.len() as i64;
+    }
+
+    if received != content_length {
+        let _ = tokio::fs::remove_file(&tmp_path).await;
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    // rename before database insertion
+    let final_path = PathBuf::from(APP_DATA_DIR)
+        .join("files")
+        .join(&id);
+    tokio::fs::rename(&tmp_path, &final_path)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // index decides what exists so it comes last
+    let db = database::connect(&db_path)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    database::insert_file_entry(&db, &id, name, content_length)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(id)
 }
 
 async fn get_file(
-    State(db): State<Arc<Mutex<Connection>>>,
+    State(db_path): State<PathBuf>,
     Path(id): Path<String>,
 ) -> Result<Response, StatusCode> {
-    let db = db.lock()
+    let db = database::connect(&db_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let (name, data) = database::query_file(&db, &id)
+    let name = database::query_file_name(&db, &id)
         .map_err(|_| StatusCode::NOT_FOUND)?;
 
-    let mut response = Response::new(data.into());
+    let file = tokio::fs::File::open(PathBuf::from(APP_DATA_DIR).join("files").join(&id))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+    let mut response = Response::new(body);
 
-    // This shit is maybe just straight up tech debt
-    // I am passing the filename in two ways
-    // As a header for easy parsing in the cli client
-    // And in the content disposition for downloading in the browser
+    // passing the filename in two ways
+    // 1. header for easy parsing in the cli client
+    // 2. content disposition for downloading in the browser
     response.headers_mut().insert(
         "x-file-name",
-        HeaderValue::from_str(&name).expect("invalid filename"),
+        HeaderValue::from_str(&name)
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
     );
 
     response.headers_mut().insert(
@@ -79,7 +124,6 @@ async fn get_file(
     );
 
     let disposition = format!("attachment; filename=\"{}\"", name);
-
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
         HeaderValue::try_from(disposition)
@@ -90,28 +134,37 @@ async fn get_file(
 }
 
 async fn get_all_file_info(
-    State(db): State<Arc<Mutex<Connection>>>,
-) -> Result<Json<Vec<FileInfo>>, StatusCode> {
-    let db = db.lock()
+    State(db_path): State<PathBuf>,
+) -> Result<Json<Vec<FileEntry>>, StatusCode> {
+    let db = database::connect(&db_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    let files = database::query_all_file_info(&db)
+    let files = database::query_all_file_entries(&db)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(files))
 }
 
 async fn remove_file(
-    State(db): State<Arc<Mutex<Connection>>>,
+    State(db_path): State<PathBuf>,
     Path(id): Path<String>,
-) -> Result<StatusCode, StatusCode> {
-    let db = db.lock()
+) -> Result<String, StatusCode> {
+    let db = database::connect(&db_path)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let deleted = database::delete_file(&db, &id)
+    // do this first because an orphan is easier to liquidate than missing entry causing runtime issues
+    let name = database::delete_file_entry(&db, &id)
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => StatusCode::NOT_FOUND,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+
+    // who cares if this fails just run a cleanup job sometimes
+    let file_path = PathBuf::from(APP_DATA_DIR)
+        .join("files")
+        .join(&id);
+
+    tokio::fs::remove_file(file_path)
+        .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    if deleted == 0 {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
-    Ok(StatusCode::NO_CONTENT)
+    Ok(name)
 }
