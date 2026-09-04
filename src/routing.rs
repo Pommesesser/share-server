@@ -124,9 +124,17 @@ async fn get_all_file_info(
     State(db_path): State<PathBuf>,
 ) -> Result<Json<Vec<FileEntry>>, StatusCode> {
     let db = database::connect(&db_path)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|error| {
+            eprintln!("database connect failed: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     let files = database::query_all_file_entries(&db)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|error| {
+            eprintln!("query_all_file_entries failed: {error}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
     Ok(Json(files))
 }
 
