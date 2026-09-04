@@ -16,8 +16,10 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use crate::{database, id, APP_DATA_DIR};
 
+// TODO upload size limit
 // TODO consistency
 // TODO better error codes
+// TODO properly encode Content-Disposition filename
 
 pub fn router(db_path: PathBuf) -> Router {
     Router::new()
@@ -108,7 +110,6 @@ async fn get_file(
         HeaderValue::from_static("application/octet-stream"),
     );
 
-    // TODO properly encode Content-Disposition filename
     let disposition = format!("attachment; filename=\"{}\"", name);
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
