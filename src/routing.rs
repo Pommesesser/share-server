@@ -16,7 +16,7 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use crate::{database, id, APP_DATA_DIR};
 
-// TODO consistency
+// TODO consistency pass on startup
 // TODO properly encoded filenames
 // TODO tracing
 
