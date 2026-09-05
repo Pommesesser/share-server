@@ -17,7 +17,7 @@ use tokio_util::io::ReaderStream;
 use crate::{database, id, APP_DATA_DIR};
 
 // TODO consistency
-// TODO properly encode Content-Disposition filename
+// TODO properly encoded filenames
 // TODO tracing
 
 const MAX_UPLOAD_SIZE: i64 = 10 * 1024 * 1024 * 1024;
