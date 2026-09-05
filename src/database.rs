@@ -8,11 +8,11 @@ pub struct FileEntry {
     pub size: i64
 }
 
-pub fn connect(db_path: &Path) -> Result<Connection, rusqlite::Error> {
+pub fn connect(db_path: &Path) -> rusqlite::Result<Connection> {
     Connection::open(db_path)
 }
 
-pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<usize> {
+pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<()> {
     db.execute(
         "CREATE TABLE IF NOT EXISTS files (
             id TEXT PRIMARY KEY,
@@ -20,7 +20,9 @@ pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<usize> {
             size INTEGER NOT NULL
         )",
         [],
-    )
+    )?;
+
+    Ok(())
 }
 
 pub fn insert_file_entry(

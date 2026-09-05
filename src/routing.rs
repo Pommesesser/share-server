@@ -16,10 +16,11 @@ use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
 use crate::{database, id, APP_DATA_DIR};
 
-// TODO upload size limit
 // TODO consistency
-// TODO better error codes
 // TODO properly encode Content-Disposition filename
+// TODO tracing
+
+const MAX_UPLOAD_SIZE: i64 = 10 * 1024 * 1024 * 1024;
 
 pub fn router(db_path: PathBuf) -> Router {
     Router::new()
@@ -33,33 +34,38 @@ async fn store_file(
     headers: HeaderMap,
     body: Body,
 ) -> Result<String, StatusCode> {
-    let name = headers
+    let value = headers
         .get("x-file-name")
-        .and_then(|value| value.to_str().ok())
         .ok_or(StatusCode::BAD_REQUEST)?;
-
-    let mut stream = body.into_data_stream();
+    let name = value
+        .to_str()
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let id = id::gen_rand_id();
     let tmp_path = PathBuf::from(APP_DATA_DIR)
         .join("files")
         .join(format!("tmp-{id}"));
-
     let mut file = tokio::fs::File::create(&tmp_path)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let mut received = 0i64;
-
+    let mut stream = body.into_data_stream();
     while let Some(chunk) = stream.next().await {
+        // chunk error cases are more complex, but it is a reasonable solution
         let chunk = chunk
             .map_err(|_| StatusCode::BAD_REQUEST)?;
+        received += chunk.len() as i64;
+
+        if received > MAX_UPLOAD_SIZE {
+            // worth logging at least
+            let _ = tokio::fs::remove_file(&tmp_path).await;
+            return Err(StatusCode::PAYLOAD_TOO_LARGE);
+        }
 
         file.write_all(&chunk)
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-        received += chunk.len() as i64;
     }
 
     // rename before database insertion
@@ -120,6 +126,7 @@ async fn get_file(
     Ok(response)
 }
 
+// Messy logging that I should replace with tracing
 async fn get_all_file_info(
     State(db_path): State<PathBuf>,
 ) -> Result<Json<Vec<FileEntry>>, StatusCode> {
