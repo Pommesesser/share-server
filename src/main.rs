@@ -1,12 +1,14 @@
 mod database;
 mod routing;
 mod id;
+mod storage;
 
 use std::fs;
 use std::path::PathBuf;
 
-const APP_DATA_DIR: &str = "./data";
-const DB_PATH: &str = "./data/share-server.db";
+pub const APP_DATA_DIR: &str = "./data";
+pub const FILES_PATH: &str = "./data/files";
+pub const DB_PATH: &str = "./data/share-server.db";
 
 #[tokio::main]
 async fn main() {
