@@ -3,22 +3,21 @@ mod routing;
 mod id;
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const APP_DATA_DIR: &str = "./data";
+const DB_PATH: &str = "./data/share-server.db";
 
 #[tokio::main]
 async fn main() {
-    let db_path = PathBuf::from(APP_DATA_DIR).join("share-server.db");
-
     initialize_app_data_dir();
-    initialize_database(&db_path);
+    initialize_database();
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:3000")
         .await
         .expect("Unable to bind server");
 
-    axum::serve(listener, routing::router(db_path))
+    axum::serve(listener, routing::router())
         .await
         .expect("Server failed");
 }
@@ -28,8 +27,8 @@ fn initialize_app_data_dir() {
         .expect("Unable to initialize app data directory");
 }
 
-fn initialize_database(db_path: &Path) {
-    let db = database::connect(&db_path)
+fn initialize_database() {
+    let db = database::connect()
         .expect("Unable to initialize database connection");
 
     database::initialize_files_table(&db)

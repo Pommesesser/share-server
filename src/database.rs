@@ -1,5 +1,6 @@
-use std::path::Path;
+use std::path::{PathBuf};
 use rusqlite::Connection;
+use crate::DB_PATH;
 
 #[derive(serde::Serialize)]
 pub struct FileEntry {
@@ -8,8 +9,8 @@ pub struct FileEntry {
     pub size: i64
 }
 
-pub fn connect(db_path: &Path) -> rusqlite::Result<Connection> {
-    Connection::open(db_path)
+pub fn connect() -> rusqlite::Result<Connection> {
+    Connection::open(PathBuf::from(DB_PATH))
 }
 
 pub fn initialize_files_table(db: &Connection) -> rusqlite::Result<()> {

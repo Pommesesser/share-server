@@ -1,6 +1,6 @@
 use crate::database::FileEntry;
 use axum::{
-    extract::{Path, State},
+    extract::Path,
     http::{
         header::{CONTENT_DISPOSITION, CONTENT_TYPE},
         HeaderMap, HeaderValue, StatusCode,
@@ -19,21 +19,17 @@ use crate::{database, id, APP_DATA_DIR};
 // TODO consistency pass on startup
 // TODO properly encoded filenames
 // TODO tracing
+// TODO split off storage and filesystem layers
 
 const MAX_UPLOAD_SIZE: i64 = 10 * 1024 * 1024 * 1024;
 
-pub fn router(db_path: PathBuf) -> Router {
+pub fn router() -> Router {
     Router::new()
         .route("/files", get(get_all_file_info).post(store_file))
         .route("/files/{id}", get(get_file).delete(remove_file))
-        .with_state(db_path)
 }
 
-async fn store_file(
-    State(db_path): State<PathBuf>,
-    headers: HeaderMap,
-    body: Body,
-) -> Result<String, StatusCode> {
+async fn store_file(headers: HeaderMap, body: Body) -> Result<String, StatusCode> {
     let value = headers
         .get("x-file-name")
         .ok_or(StatusCode::BAD_REQUEST)?;
@@ -77,7 +73,7 @@ async fn store_file(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // index decides what exists so it comes last
-    let db = database::connect(&db_path)
+    let db = database::connect()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     database::insert_file_entry(&db, &id, name, received)
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -85,11 +81,8 @@ async fn store_file(
     Ok(id)
 }
 
-async fn get_file(
-    State(db_path): State<PathBuf>,
-    Path(id): Path<String>,
-) -> Result<Response, StatusCode> {
-    let db = database::connect(&db_path)
+async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
+    let db = database::connect()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let name = database::query_file_name(&db, &id)
@@ -127,10 +120,8 @@ async fn get_file(
 }
 
 // Messy logging that I should replace with tracing
-async fn get_all_file_info(
-    State(db_path): State<PathBuf>,
-) -> Result<Json<Vec<FileEntry>>, StatusCode> {
-    let db = database::connect(&db_path)
+async fn get_all_file_info() -> Result<Json<Vec<FileEntry>>, StatusCode> {
+    let db = database::connect()
         .map_err(|error| {
             eprintln!("database connect failed: {error}");
             StatusCode::INTERNAL_SERVER_ERROR
@@ -145,11 +136,8 @@ async fn get_all_file_info(
     Ok(Json(files))
 }
 
-async fn remove_file(
-    State(db_path): State<PathBuf>,
-    Path(id): Path<String>,
-) -> Result<String, StatusCode> {
-    let db = database::connect(&db_path)
+async fn remove_file(Path(id): Path<String>) -> Result<String, StatusCode> {
+    let db = database::connect()
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     // do this first because an orphan is easier to liquidate than missing entry causing runtime issues
