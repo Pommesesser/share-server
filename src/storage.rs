@@ -5,7 +5,7 @@ use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 
 use crate::database::FileEntry;
-use crate::routing::MAX_FILE_SIZE;
+use crate::http::MAX_FILE_SIZE;
 use crate::{FILES_PATH, database, id};
 
 pub enum StoreFileError {

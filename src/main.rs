@@ -1,5 +1,5 @@
 mod database;
-mod routing;
+mod http;
 mod id;
 mod storage;
 
@@ -18,7 +18,7 @@ async fn main() {
         .await
         .expect("Unable to bind server");
 
-    axum::serve(listener, routing::router())
+    axum::serve(listener, http::router())
         .await
         .expect("Server failed");
 }
