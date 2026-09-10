@@ -59,7 +59,8 @@ async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
             OpenFileError::NotFound => StatusCode::NOT_FOUND,
         })?;
 
-    let mut response = Response::new(Body::from_stream(ReaderStream::new(stored.file)));
+    let mut response =
+        Response::new(Body::from_stream(ReaderStream::new(stored.file)));
 
     // passing the filename in two ways
     // 1. header for easy parsing in the cli client

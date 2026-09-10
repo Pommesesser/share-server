@@ -6,7 +6,6 @@ mod storage;
 use std::fs;
 use std::path::PathBuf;
 
-pub const APP_DATA_DIR: &str = "./data";
 pub const FILES_PATH: &str = "./data/files";
 pub const DB_PATH: &str = "./data/share-server.db";
 
@@ -25,7 +24,7 @@ async fn main() {
 }
 
 fn initialize_app_data_dir() {
-    fs::create_dir_all(PathBuf::from(APP_DATA_DIR).join("files"))
+    fs::create_dir_all(PathBuf::from(FILES_PATH))
         .expect("Unable to initialize app data directory");
 }
 
