@@ -20,43 +20,45 @@ use tokio_util::io::ReaderStream;
 // TODO properly encoded filenames
 // TODO tracing
 
-pub const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024;
-
 pub fn router() -> Router {
     Router::new()
         .route("/files", get(get_file_entries).post(upload_file))
         .route("/files/{id}", get(get_file).delete(delete_file))
 }
 
+#[tracing::instrument(skip(headers, body))]
 async fn upload_file(headers: HeaderMap, body: Body) -> Result<String, StatusCode> {
     let value = headers
         .get("x-file-name")
         .ok_or(StatusCode::BAD_REQUEST)?;
+
     let name = value
         .to_str()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     storage::store_file(name, body.into_data_stream())
-        .await.map_err(|error| match error {
-        StoreFileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
-        StoreFileError::Connection |
-        StoreFileError::Stream |
-        StoreFileError::Database |
-        StoreFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR
-    })
+        .await
+        .map_err(|error| match error {
+            StoreFileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+
+            StoreFileError::Connection
+            | StoreFileError::Stream
+            | StoreFileError::Database
+            | StoreFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
+        })
 }
 
+
+#[tracing::instrument]
 async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
     let stored = storage::open_file(&id)
         .await
         .map_err(|error| match error {
+            OpenFileError::NotFound => StatusCode::NOT_FOUND,
+
             OpenFileError::Connection
             | OpenFileError::Database
-            | OpenFileError::Filesystem => {
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
-
-            OpenFileError::NotFound => StatusCode::NOT_FOUND,
+            | OpenFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
     let mut response =
@@ -86,6 +88,7 @@ async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
     Ok(response)
 }
 
+#[tracing::instrument]
 async fn get_file_entries() -> Result<Json<Vec<FileEntry>>, StatusCode> {
     storage::get_file_entries()
         .await
@@ -93,6 +96,7 @@ async fn get_file_entries() -> Result<Json<Vec<FileEntry>>, StatusCode> {
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[tracing::instrument]
 async fn delete_file(Path(id): Path<String>) -> Result<String, StatusCode> {
     storage::remove(&id)
         .await

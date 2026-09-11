@@ -11,6 +11,8 @@ pub const DB_PATH: &str = "./data/share-server.db";
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+
     initialize_app_data_dir();
     initialize_database();
 

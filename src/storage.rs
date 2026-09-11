@@ -3,10 +3,10 @@ use futures_util::StreamExt;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-
 use crate::database::FileEntry;
-use crate::http::MAX_FILE_SIZE;
 use crate::{FILES_PATH, database, id};
+
+pub const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024;
 
 pub enum StoreFileError {
     Connection,
@@ -16,6 +16,7 @@ pub enum StoreFileError {
     Filesystem,
 }
 
+#[tracing::instrument(skip(stream))]
 pub async fn store_file(
     name: &str,
     mut stream: BodyDataStream,
@@ -76,6 +77,7 @@ pub enum OpenFileError {
     Filesystem,
 }
 
+#[tracing::instrument]
 pub async fn open_file(id: &str) -> Result<StoredFile, OpenFileError> {
     let db = database::connect()
         .map_err(|_| OpenFileError::Connection)?;
@@ -100,6 +102,7 @@ pub enum GetFileEntriesError {
     Database,
 }
 
+#[tracing::instrument]
 pub async fn get_file_entries() -> Result<Vec<FileEntry>, GetFileEntriesError> {
     let db = database::connect()
         .map_err(|_| {
@@ -121,6 +124,7 @@ pub enum RemoveError {
     Filesystem,
 }
 
+#[tracing::instrument]
 pub async fn remove(id: &str) -> Result<String, RemoveError> {
     let db = database::connect()
         .map_err(|_| RemoveError::Connection)?;
