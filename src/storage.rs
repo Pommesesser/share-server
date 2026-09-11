@@ -8,6 +8,7 @@ use crate::{FILES_PATH, database, id};
 
 pub const MAX_FILE_SIZE: i64 = 10 * 1024 * 1024 * 1024;
 
+#[derive(Debug)]
 pub enum StoreFileError {
     Connection,
     TooLarge,
@@ -70,6 +71,7 @@ pub struct StoredFile {
     pub file: File,
 }
 
+#[derive(Debug)]
 pub enum OpenFileError {
     Connection,
     NotFound,
@@ -97,6 +99,7 @@ pub async fn open_file(id: &str) -> Result<StoredFile, OpenFileError> {
     Ok(StoredFile { name, file })
 }
 
+#[derive(Debug)]
 pub enum GetFileEntriesError {
     Connection,
     Database,
@@ -117,6 +120,7 @@ pub async fn get_file_entries() -> Result<Vec<FileEntry>, GetFileEntriesError> {
     Ok(files)
 }
 
+#[derive(Debug)]
 pub enum RemoveError {
     Connection,
     NotFound,

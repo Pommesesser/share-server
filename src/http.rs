@@ -18,6 +18,7 @@ use tokio_util::io::ReaderStream;
 // TODO authentication
 // TODO consistency pass on startup
 // TODO properly encoded filenames
+
 // TODO tracing
 
 pub fn router() -> Router {
@@ -36,16 +37,24 @@ async fn upload_file(headers: HeaderMap, body: Body) -> Result<String, StatusCod
         .to_str()
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    storage::store_file(name, body.into_data_stream())
+    let response = storage::store_file(name, body.into_data_stream())
         .await
-        .map_err(|error| match error {
-            StoreFileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+        .map_err(|error| {
+            tracing::warn!(?error, "failed to store file");
 
-            StoreFileError::Connection
-            | StoreFileError::Stream
-            | StoreFileError::Database
-            | StoreFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
-        })
+            match error {
+                StoreFileError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+
+                StoreFileError::Connection
+                | StoreFileError::Stream
+                | StoreFileError::Database
+                | StoreFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
+            }
+        })?;
+
+    tracing::info!(id = %response, "file uploaded");
+
+    Ok(response)
 }
 
 
@@ -53,12 +62,16 @@ async fn upload_file(headers: HeaderMap, body: Body) -> Result<String, StatusCod
 async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
     let stored = storage::open_file(&id)
         .await
-        .map_err(|error| match error {
-            OpenFileError::NotFound => StatusCode::NOT_FOUND,
+        .map_err(|error| {
+            tracing::warn!(?error, "failed to get stored file");
 
-            OpenFileError::Connection
-            | OpenFileError::Database
-            | OpenFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
+            match error {
+                OpenFileError::NotFound => StatusCode::NOT_FOUND,
+
+                OpenFileError::Connection
+                | OpenFileError::Database
+                | OpenFileError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
+            }
         })?;
 
     let mut response =
@@ -70,7 +83,10 @@ async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
     response.headers_mut().insert(
         "x-file-name",
         HeaderValue::from_str(&stored.name)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+            .map_err(|error| {
+                tracing::warn!(?error, "failed to construct 'x-file-name' header");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
     );
 
     response.headers_mut().insert(
@@ -82,28 +98,49 @@ async fn get_file(Path(id): Path<String>) -> Result<Response, StatusCode> {
     response.headers_mut().insert(
         CONTENT_DISPOSITION,
         HeaderValue::try_from(disposition)
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
+            .map_err(|error| {
+                tracing::warn!(?error, "failed to construct disposition header");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?,
     );
+
+    tracing::info!("file sent");
 
     Ok(response)
 }
 
 #[tracing::instrument]
 async fn get_file_entries() -> Result<Json<Vec<FileEntry>>, StatusCode> {
-    storage::get_file_entries()
+    let response = storage::get_file_entries()
         .await
         .map(Json)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+        .map_err(|error| {
+            tracing::warn!(?error, "failed to get file entries");
+
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    tracing::info!("file entries sent");
+
+    Ok(response)
 }
 
 #[tracing::instrument]
 async fn delete_file(Path(id): Path<String>) -> Result<String, StatusCode> {
-    storage::remove(&id)
+    let response = storage::remove(&id)
         .await
-        .map_err(|error| match error {
-            RemoveError::NotFound => StatusCode::NOT_FOUND,
-            RemoveError::Connection
-            | RemoveError::Database
-            | RemoveError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
-        })
+        .map_err(|error| {
+            tracing::warn!(?error, "failed to delete file");
+
+            match error {
+                RemoveError::NotFound => StatusCode::NOT_FOUND,
+                RemoveError::Connection
+                | RemoveError::Database
+                | RemoveError::Filesystem => StatusCode::INTERNAL_SERVER_ERROR,
+            }
+        })?;
+
+    tracing::info!("file deleted");
+
+    Ok(response)
 }
